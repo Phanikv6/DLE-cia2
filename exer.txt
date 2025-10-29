@@ -1,0 +1,538 @@
+ex 6:
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the MNIST dataset
+(x_train, _), (x_test, _) = tf.keras.datasets.mnist.load_data()
+
+# Normalize the images to the range [0, 1]
+x_train = x_train.astype('float32') / 255.0
+x_test = x_test.astype('float32') / 255.0
+
+# Add a channel dimension (for grayscale images, it's 1 channel)
+x_train = np.expand_dims(x_train, -1)
+x_test = np.expand_dims(x_test, -1)
+
+# Define the convolutional autoencoder model
+def create_autoencoder():
+    # Encoder
+    input_img = layers.Input(shape=(28, 28, 1))
+    x = layers.Conv2D(32, (3, 3), activation='relu', padding='same')(input_img)
+    x = layers.MaxPooling2D((2, 2), padding='same')(x)
+    x = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+    encoded = layers.MaxPooling2D((2, 2), padding='same')(x)
+
+    # Decoder
+    x = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(encoded)
+    x = layers.UpSampling2D((2, 2))(x)
+    x = layers.Conv2D(32, (3, 3), activation='relu', padding='same')(x)
+    x = layers.UpSampling2D((2, 2))(x)
+    decoded = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')(x)
+
+    # Autoencoder model
+    autoencoder = models.Model(input_img, decoded)
+    return autoencoder
+
+autoencoder = create_autoencoder()
+autoencoder.compile(optimizer='adam', loss='binary_crossentropy')
+
+# Train the autoencoder
+history = autoencoder.fit(x_train, x_train,
+                          epochs=50,
+                          batch_size=256,
+                          shuffle=True,
+                          validation_data=(x_test, x_test))
+
+# Plot training and validation loss
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.legend()
+plt.show()
+
+# Encode and decode some test images
+decoded_imgs = autoencoder.predict(x_test)
+
+# Display original and reconstructed images
+n = 10  # Number of images to display
+plt.figure(figsize=(20, 4))
+for i in range(n):
+    # Display original
+    ax = plt.subplot(2, n, i + 1)
+    plt.imshow(x_test[i].reshape(28, 28), cmap='gray')
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+
+    # Display reconstruction
+    ax = plt.subplot(2, n, i + 1 + n)
+    plt.imshow(decoded_imgs[i].reshape(28, 28), cmap='gray')
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+plt.show()
+
+
+ex 7:
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from tensorflow.keras.datasets import mnist
+
+# --- Data Preparation ---
+
+# Load the MNIST dataset
+(x_train, _), (x_test, _) = mnist.load_data()
+
+# Normalize the images to [0, 1] range
+x_train = x_train.astype('float32') / 255.
+x_test = x_test.astype('float32') / 255.
+
+# Add a channel dimension (for grayscale images, it's 1 channel)
+x_train = np.expand_dims(x_train, -1)
+x_test = np.expand_dims(x_test, -1)
+
+# Add noise to the images
+noise_factor = 0.5
+x_train_noisy = x_train + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=x_train.shape)
+x_test_noisy = x_test + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=x_test.shape)
+
+# Clip the values to be between 0 and 1
+x_train_noisy = np.clip(x_train_noisy, 0., 1.)
+x_test_noisy = np.clip(x_test_noisy, 0., 1.)
+
+# --- Model Definition ---
+
+def create_convolutional_denoising_autoencoder():
+    # Encoder
+    input_img = layers.Input(shape=(28, 28, 1))
+    
+    # Convolutional and Max Pooling layers to reduce dimensionality
+    x = layers.Conv2D(32, (3, 3), activation='relu', padding='same')(input_img) # 28x28x32
+    x = layers.MaxPooling2D((2, 2), padding='same')(x) # 14x14x32
+    x = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(x) # 14x14x64
+    encoded = layers.MaxPooling2D((2, 2), padding='same')(x) # 7x7x64 - The latent representation
+
+    # Decoder
+    # Convolutional and UpSampling layers to reconstruct the image
+    x = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(encoded) # 7x7x64
+    x = layers.UpSampling2D((2, 2))(x) # 14x14x64
+    x = layers.Conv2D(32, (3, 3), activation='relu', padding='same')(x) # 14x14x32
+    x = layers.UpSampling2D((2, 2))(x) # 28x28x32
+    
+    # Final layer to output a single channel (the reconstructed image)
+    decoded = layers.Conv2D(1, (3, 3), activation='sigmoid', padding='same')(x) # 28x28x1
+
+    # Autoencoder model
+    autoencoder = models.Model(input_img, decoded)
+    return autoencoder
+
+autoencoder = create_convolutional_denoising_autoencoder()
+autoencoder.compile(optimizer='adam', loss='binary_crossentropy')
+
+# --- Training ---
+
+print(autoencoder.summary())
+
+# Train the autoencoder: Input is noisy, output (target) is clean
+autoencoder.fit(x_train_noisy, x_train,
+                epochs=50, # Reduced epochs for faster execution/example, but feel free to increase
+                batch_size=256,
+                shuffle=True,
+                validation_data=(x_test_noisy, x_test))
+
+# --- Visualization (Denoising) ---
+
+# Use the model to predict the clean images from the noisy input
+denoised_images = autoencoder.predict(x_test_noisy)
+
+# Display results
+n = 10  # Number of images to display
+plt.figure(figsize=(20, 6))
+
+for i in range(n):
+    # Display original (clean) images
+    ax = plt.subplot(3, n, i + 1)
+    plt.imshow(x_test[i].reshape(28, 28), cmap="gray")
+    plt.title("Original")
+    plt.axis("off")
+
+    # Display noisy images
+    ax = plt.subplot(3, n, i + 1 + n)
+    plt.imshow(x_test_noisy[i].reshape(28, 28), cmap="gray")
+    plt.title("Noisy")
+    plt.axis("off")
+
+    # Display denoised images
+    ax = plt.subplot(3, n, i + 1 + 2 * n)
+    plt.imshow(denoised_images[i].reshape(28, 28), cmap="gray")
+    plt.title("Denoised")
+    plt.axis("off")
+plt.show()
+
+ex 8:
+import os
+import pickle
+import numpy as np
+from tqdm.notebook import tqdm
+
+from tensorflow.keras.applications.vgg16 import VGG16, preprocess_input
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Model
+from tensorflow.keras.utils import to_categorical, plot_model
+from tensorflow.keras.layers import Input, Dense, LSTM, Embedding, Dropout, add
+BASE_DIR = 'D://caption//keras image//'
+WORKING_DIR = 'D://caption'
+model = VGG16()
+# restructure the model
+model = Model(inputs=model.inputs, outputs=model.layers[-2].output)
+# summarize
+print(model.summary())
+features = {}
+directory = os.path.join(BASE_DIR, 'Images')
+
+for img_name in tqdm(os.listdir(directory)):
+    # load the image from file
+    img_path = directory + '/' + img_name
+    
+    image = load_img(img_path, target_size=(224, 224))
+    # convert image pixels to numpy array
+    image = img_to_array(image)
+    # reshape data for model
+    image = image.reshape((1, image.shape[0], image.shape[1], image.shape[2]))
+    # preprocess image for vgg
+    image = preprocess_input(image)
+    # extract features
+    feature = model.predict(image, verbose=0)
+    # get image ID
+    image_id = img_name.split('.')[0]
+    # store feature
+    features[image_id] = feature
+image_id = img_name.split('.')[0]
+print(feature) 
+pickle.dump(features, open(os.path.join(WORKING_DIR, 'features.pkl'), 'wb'))
+with open(os.path.join(WORKING_DIR, 'features.pkl'), 'rb') as f:
+    features = pickle.load(f)
+with open(os.path.join(BASE_DIR, 'captions.txt'), 'r') as f:
+    next(f)
+    captions_doc = f.read()
+mapping = {}
+# process lines
+for line in tqdm(captions_doc.split('\n')):
+    # split the line by comma(,)
+    tokens = line.split(',')
+    
+    if len(line) < 2:
+        continue
+    image_id, caption = tokens[0], tokens[1:]
+    # remove extension from image ID
+    image_id = image_id.split('.')[0]
+    # convert caption list to string
+    caption = " ".join(caption)
+    
+    # create list if needed
+    if image_id not in mapping:
+        mapping[image_id] = []
+    # store the caption
+    mapping[image_id].append(caption)
+print(mapping[image_id])
+print(tokens)
+len(mapping)
+def clean(mapping):
+    for key, captions in mapping.items():
+        for i in range(len(captions)):
+            # take one caption at a time
+            caption = captions[i]
+            # preprocessing steps
+            # convert to lowercase
+            caption = caption.lower()
+            # delete digits, special chars, etc., 
+            caption = caption.replace('[^A-Za-z]', '')
+            # delete additional spaces
+            caption = caption.replace('\s+', ' ')
+            # add start and end tags to the caption
+            caption = 'startseq ' + " ".join([word for word in caption.split() if len(word)>1]) + ' endseq'
+            captions[i] = caption
+mapping['1000268201_693b08cb0e']
+mapping['1000268201_693b08cb0e']
+all_captions = []
+for key in mapping:
+    for caption in mapping[key]:
+        all_captions.append(caption)
+len(all_captions)
+all_captions[:10]
+
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(all_captions)
+vocab_size = len(tokenizer.word_index) + 1
+vocab_size
+# get maximum length of the caption available
+max_length = max(len(caption.split()) for caption in all_captions)
+max_length
+image_ids = list(mapping.keys())
+split = int(len(image_ids) * 0.90)
+train = image_ids[:split]
+test = image_ids[split:]
+print(len(test))
+# create data generator to get data in batch (avoids session crash)
+def data_generator(data_keys, mapping, features, tokenizer, max_length, vocab_size, batch_size):
+    # loop over images
+    X1, X2, y = list(), list(), list()
+    n = 0
+    while 1:
+        for key in data_keys:
+            n += 1
+            captions = mapping[key]
+            # process each caption
+            for caption in captions:
+                # encode the sequence
+                seq = tokenizer.texts_to_sequences([caption])[0]
+                # split the sequence into X, y pairs
+                for i in range(1, len(seq)):
+                    # split into input and output pairs
+                    in_seq, out_seq = seq[:i], seq[i]
+                    # pad input sequence
+                    in_seq = pad_sequences([in_seq], maxlen=max_length)[0]
+                    # encode output sequence
+                    out_seq = to_categorical([out_seq], num_classes=vocab_size)[0]
+                    
+                    # store the sequences
+                    X1.append(features[key][0])
+                    X2.append(in_seq)
+                    y.append(out_seq)
+            if n == batch_size:
+                X1, X2, y = np.array(X1), np.array(X2), np.array(y)
+                yield [X1, X2], y
+                X1, X2, y = list(), list(), list()
+                n = 0
+# encoder model
+# image feature layers
+inputs1 = Input(shape=(4096,))
+fe1 = Dropout(0.4)(inputs1)
+fe2 = Dense(256, activation='relu')(fe1)
+# sequence feature layers
+inputs2 = Input(shape=(max_length,))
+se1 = Embedding(vocab_size, 256, mask_zero=True)(inputs2)
+se2 = Dropout(0.4)(se1)
+se3 = LSTM(256)(se2)
+
+# decoder model
+decoder1 = add([fe2, se3])
+decoder2 = Dense(256, activation='relu')(decoder1)
+outputs = Dense(vocab_size, activation='softmax')(decoder2)
+
+model = Model(inputs=[inputs1, inputs2], outputs=outputs)
+model.compile(loss='categorical_crossentropy', optimizer='adam')
+
+# plot the model
+plot_model(model, show_shapes=True)
+# train the model
+epochs = 2
+batch_size = 32
+steps = len(train) // batch_size
+
+for i in range(epochs):
+    # create data generator
+    generator = data_generator(train, mapping, features, tokenizer, max_length, vocab_size, batch_size)
+    # fit for one epoch
+    model.fit(generator, epochs=1, steps_per_epoch=steps, verbose=1)
+
+
+model.save(WORKING_DIR+'/best_model.h5')
+def idx_to_word(integer, tokenizer):
+    for word, index in tokenizer.word_index.items():
+        if index == integer:
+            return word
+    return None
+def predict_caption(model, image, tokenizer, max_length):
+    # add start tag for generation process
+    in_text = 'startseq'
+    # iterate over the max length of sequence
+    for i in range(max_length):
+        # encode input sequence
+        sequence = tokenizer.texts_to_sequences([in_text])[0]
+        # pad the sequence
+        sequence = pad_sequences([sequence], max_length)
+        # predict next word
+        yhat = model.predict([image, sequence], verbose=0)
+        # get index with high probability
+        yhat = np.argmax(yhat)
+        # convert index to word
+        word = idx_to_word(yhat, tokenizer)
+        # stop if word not found
+        if word is None:
+            break
+        # append word as input for generating next word
+        in_text += " " + word
+        # stop if we reach end tag
+        if word == 'endseq':
+            break
+      
+    return in_text
+
+
+from nltk.translate.bleu_score import corpus_bleu
+# validate with test data
+actual, predicted = list(), list()
+
+for key in tqdm(test):
+    # get actual caption
+    captions = mapping[key]
+    # predict the caption for image
+    y_pred = predict_caption(model, features[key], tokenizer, max_length) 
+    # split into words
+    actual_captions = [caption.split() for caption in captions]
+    y_pred = y_pred.split()
+    # append to the list
+    actual.append(actual_captions)
+    predicted.append(y_pred)
+    
+# calcuate BLEU score
+print("BLEU-1: %f" % corpus_bleu(actual, predicted, weights=(1.0, 0, 0, 0)))
+print("BLEU-2: %f" % corpus_bleu(actual, predicted, weights=(0.5, 0.5, 0, 0)))
+from PIL import Image
+import matplotlib.pyplot as plt
+def generate_caption(image_name):
+    # load the image
+    # image_name = "1001773457_577c3a7d70.jpg"
+    image_id = image_name.split('.')[0]
+    img_path = os.path.join(BASE_DIR, "Images", image_name)
+    image = Image.open(img_path)
+    captions = mapping[image_id]
+    print('---------------------Actual---------------------')
+    for caption in captions:
+        print(caption)
+    # predict the caption
+    y_pred = predict_caption(model, features[image_id], tokenizer, max_length)
+    print('--------------------Predicted--------------------')
+    print(y_pred)
+    plt.imshow(image)
+generate_caption("1001773457_577c3a7d70.jpg")
+
+ex 9:
+
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import LSTM, Dropout, Dense, Reshape
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.models import load_model
+from PIL import Image
+(X_train, y_train), (X_test, y_test) = mnist.load_data()
+X_train, X_test = X_train / 255.0, X_test / 255.0
+model = Sequential([
+    Reshape((28, 28), input_shape=(28, 28)),
+    LSTM(128, return_sequences=True), Dropout(0.2),
+    LSTM(128), Dropout(0.2),
+    Dense(64, activation='relu'), Dropout(0.2),
+    Dense(10, activation='softmax')
+])
+model.compile(loss='sparse_categorical_crossentropy',
+              optimizer=Adam(0.001),
+              metrics=['accuracy'])
+model.summary()
+history = model.fit(X_train, y_train, epochs=1, validation_data=(X_test, y_test))
+model.save('mnist_lstm.keras')
+model = load_model('mnist_lstm.keras')
+def predict_number(input_data):
+    if isinstance(input_data, str):
+        img = image.load_img(input_data, target_size=(28, 28), color_mode='grayscale')
+        img = np.array(img).astype('float32') / 255.0
+    else:  
+        img = input_data.astype('float32') / 255.0
+    pred = model.predict(img.reshape(1, 28, 28))
+    return np.argmax(pred)
+sample = X_test[0]
+pred = predict_number(sample)
+plt.imshow(sample, cmap='gray')
+plt.title(f"Predicted: {pred}")
+plt.show()
+img_path = 'seven2.webp'
+pred2 = predict_number(img_path)
+plt.imshow(Image.open(img_path), cmap='gray')
+plt.title(f"Predicted: {pred2}")
+plt.show()
+
+
+ex 10:
+import pandas as pd
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import SimpleRNN, LSTM, GRU, Dense
+from sklearn.preprocessing import MinMaxScaler
+import matplotlib.pyplot as plt
+
+# 1️⃣ Load dataset
+fpath = 'DOM_hourly.csv'
+df = pd.read_csv(fpath)
+
+# Convert Datetime to proper format and sort just in case
+df['Datetime'] = pd.to_datetime(df['Datetime'])
+df = df.sort_values('Datetime')
+
+# 2️⃣ Select target column
+target_col = 'DOM_MW'
+data = df[[target_col]].values
+
+# 3️⃣ Scale data between 0 and 1
+scaler = MinMaxScaler()
+data_scaled = scaler.fit_transform(data)
+
+# 4️⃣ Create time series samples
+def create_dataset(data, time_steps=24):
+    X, y = [], []
+    for i in range(len(data) - time_steps):
+        X.append(data[i:i + time_steps])
+        y.append(data[i + time_steps])
+    return np.array(X), np.array(y)
+
+time_steps = 24  # using past 24 hours to predict next hour
+X, y = create_dataset(data_scaled, time_steps)
+X = X.reshape((X.shape[0], X.shape[1], 1))  # (samples, timesteps, features)
+
+# 5️⃣ Train/Test split (80-20)
+split = int(len(X) * 0.8)
+X_train, X_test = X[:split], X[split:]
+y_train, y_test = y[:split], y[split:]
+
+# 6️⃣ Function to build & train model
+def train_model(model_layer, name):
+    model = Sequential([
+        model_layer(64, activation='tanh', input_shape=(time_steps, 1)),
+        Dense(1)
+    ])
+    model.compile(optimizer='adam', loss='mse')
+    model.fit(X_train, y_train, epochs=15, batch_size=32, verbose=0)
+    loss = model.evaluate(X_test, y_test, verbose=0)
+    pred = model.predict(X_test)
+    print(f"{name} Test Loss: {loss:.6f}")
+    return loss, pred
+
+# 7️⃣ Train all three models
+rnn_loss, rnn_pred = train_model(SimpleRNN, "RNN")
+lstm_loss, lstm_pred = train_model(LSTM, "LSTM")
+gru_loss, gru_pred = train_model(GRU, "GRU")
+
+# 8️⃣ Inverse scale predictions
+y_test_inv = scaler.inverse_transform(y_test)
+rnn_pred_inv = scaler.inverse_transform(rnn_pred)
+lstm_pred_inv = scaler.inverse_transform(lstm_pred)
+gru_pred_inv = scaler.inverse_transform(gru_pred)
+
+# 9️⃣ Plot results
+plt.figure(figsize=(10,6))
+plt.plot(y_test_inv, label='Actual', color='black')
+plt.plot(rnn_pred_inv, label='RNN Prediction', alpha=0.7)
+plt.plot(lstm_pred_inv, label='LSTM Prediction', alpha=0.7)
+plt.plot(gru_pred_inv, label='GRU Prediction', alpha=0.7)
+plt.title('Comparison: RNN vs LSTM vs GRU (DOM_MW Prediction)')
+plt.xlabel('Time Steps')
+plt.ylabel('Power Demand (MW)')
+plt.legend()
+plt.show()
